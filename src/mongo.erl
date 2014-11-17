@@ -34,7 +34,7 @@
 -export ([add_user/3]).
 
 -export_type ([index_spec/0, key_order/0]).
--export ([create_index/2]).
+-export ([create_index/2, ensure_index/2]).
 
 -export ([copy_database/3, copy_database/5]).
 
@@ -416,6 +416,20 @@ create_index (Coll, IndexSpec) ->
 	Db = this_db (),
 	Index = bson:append ({ns, mongo_protocol:dbcoll (Db, Coll)}, fillout_indexspec (IndexSpec)),
 	insert ('system.indexes', Index).
+
+%% @doc Create index on collection according to given spec.
+%%      The key specification is a bson documents with the following fields:
+%%      key      :: bson document, for e.g. {field, 1, other, -1, location, 2d}, <strong>required</strong>
+%%      name     :: bson:utf8()
+%%      unique   :: boolean()
+%%      dropDups :: boolean()
+-spec ensure_index (collection(), bson:document()) -> ok.
+ensure_index(Coll, IndexSpec) ->
+  Database = this_db(),
+	Key = bson:at(key, IndexSpec),
+	Defaults = {name, gen_index_name(Key), unique, false, dropDups, false},
+	Index = bson:update(ns, mongo_protocol:dbcoll(Database, Coll), bson:merge(IndexSpec, Defaults)),
+	insert('system.indexes', Index).
 
 -spec fillout_indexspec (index_spec() | key_order()) -> index_spec().
 % Fill in missing optonal fields with defaults. Allow user to just supply key_order

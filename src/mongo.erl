@@ -215,9 +215,9 @@ write (Write) ->
 			Params = case SafeMode of safe -> {}; {safe, Param} -> Param end,
 			Ack = mongo_query:write (Context #context.dbconn, Write, Params),
 			put (mongo_lasterror, Ack),
-			case bson:lookup (err, Ack) of
+			case bson:lookup (<<"err">>, Ack) of
 				{} -> ok; {undefined} -> ok;
-				{String} -> case bson:at (code, Ack) of
+				{String} -> case bson:at (<<"code">>, Ack) of
 					10058 -> throw (not_master);
 					Code -> throw ({write_failure, Code, String}) end end end.
 
@@ -230,19 +230,19 @@ insert (Coll, Doc) -> [Value] = insert_all (Coll, [Doc]), Value.
 insert_all (Coll, Docs) ->
 	Docs1 = lists:map (fun assign_id/1, Docs),
 	write (#insert {collection = Coll, documents = Docs1}),
-	lists:map (fun (Doc) -> bson:at ('_id', Doc) end, Docs1).
+	lists:map (fun (Doc) -> bson:at (<<"_id">>, Doc) end, Docs1).
 
 -spec assign_id (bson:document()) -> bson:document(). % IO
 %@doc If doc has no '_id' field then generate a fresh object id for it
-assign_id (Doc) -> case bson:lookup ('_id', Doc) of
+assign_id (Doc) -> case bson:lookup (<<"_id">>, Doc) of
 	{_Value} -> Doc;
-	{} -> bson:append ({'_id', mongodb_app:gen_objectid()}, Doc) end.
+	{} -> bson:append ({<<"_id">>, mongodb_app:gen_objectid()}, Doc) end.
 
 -spec save (collection(), bson:document()) -> ok. % Action
 %@doc If document has no '_id' field then insert it, otherwise update it and insert only if missing.
-save (Coll, Doc) -> case bson:lookup ('_id', Doc) of
+save (Coll, Doc) -> case bson:lookup (<<"_id">>, Doc) of
 	{} -> insert (Coll, Doc), ok;
-	{Id} -> repsert (Coll, {'_id', Id}, Doc) end.
+	{Id} -> repsert (Coll, {<<"_id">>, Id}, Doc) end.
 
 -spec replace (collection(), selector(), bson:document()) -> ok. % Action
 %@doc Replace first document selected with given document.
@@ -350,7 +350,7 @@ count (Coll, Selector, Limit) ->
 		Limit =< 0 -> {count, CollStr, 'query', Selector};
 		true -> {count, CollStr, 'query', Selector, limit, Limit} end,
 	Doc = command (Command),
-	trunc (bson:at (n, Doc)). % Server returns count as float
+	trunc (bson:at (<<"n">>, Doc)). % Server returns count as float
 
 % Command %
 
@@ -371,7 +371,7 @@ command (Command) ->
 -spec auth (username(), password()) -> boolean(). % Action
 %@doc Authenticate with the database (if server is running in secure mode). Return whether authentication was successful or not. Reauthentication is required for every new pipe.
 auth (Username, Password) ->
-	Nonce = bson:at (nonce, command ({getnonce, 1})),
+	Nonce = bson:at (<<"nonce">>, command ({getnonce, 1})),
 	try command ({authenticate, 1, user, Username, nonce, Nonce, key, pw_key (Nonce, Username, Password)})
 		of _ -> true
 		catch error:{bad_command, _} -> false end.
@@ -391,9 +391,9 @@ binary_to_hexstr (Bin) ->
 -spec add_user (permission(), username(), password()) -> ok. % Action
 %@doc Add user with given access rights (permission)
 add_user (Permission, Username, Password) ->
-	User = case find_one ('system.users', {user, Username}) of {} -> {user, Username}; {Doc} -> Doc end,
+	User = case find_one (<<"system.users">>, {<<"user">>, Username}) of {} -> {<<"user">>, Username}; {Doc} -> Doc end,
 	Rec = {readOnly, case Permission of read_only -> true; read_write -> false end, pwd, pw_hash (Username, Password)},
-	save ('system.users', bson:merge (Rec, User)).
+	save (<<"system.users">>, bson:merge (Rec, User)).
 
 % Index %
 
@@ -414,8 +414,8 @@ add_user (Permission, Username, Password) ->
 %@doc Create index on collection according to given spec. Allow user to just supply key
 create_index (Coll, IndexSpec) ->
 	Db = this_db (),
-	Index = bson:append ({ns, mongo_protocol:dbcoll (Db, Coll)}, fillout_indexspec (IndexSpec)),
-	insert ('system.indexes', Index).
+	Index = bson:append ({<<"ns">>, mongo_protocol:dbcoll (Db, Coll)}, fillout_indexspec (IndexSpec)),
+	insert (<<"system.indexes">>, Index).
 
 %% @doc Create index on collection according to given spec.
 %%      The key specification is a bson documents with the following fields:
@@ -426,17 +426,29 @@ create_index (Coll, IndexSpec) ->
 -spec ensure_index (collection(), bson:document()) -> ok.
 ensure_index(Coll, IndexSpec) ->
   Database = this_db(),
-	Key = bson:at(key, IndexSpec),
-	Defaults = {name, gen_index_name(Key), unique, false, dropDups, false},
-	Index = bson:update(ns, mongo_protocol:dbcoll(Database, Coll), bson:merge(IndexSpec, Defaults)),
-	insert('system.indexes', Index).
+	Key = bson:at(<<"key">>, IndexSpec),
+	Defaults = {<<"name">>, gen_index_name(Key), <<"unique">>, false, <<"dropDups">>, false},
+	Index = bson:update(<<"ns">>, mongo_protocol:dbcoll(Database, Coll), bson:merge(IndexSpec, Defaults)),
+	insert(<<"system.indexes">>, Index).
 
 -spec fillout_indexspec (index_spec() | key_order()) -> index_spec().
 % Fill in missing optonal fields with defaults. Allow user to just supply key_order
-fillout_indexspec (IndexSpec) -> case bson:lookup (key, IndexSpec) of
-	{Key} when is_tuple (Key) -> bson:merge (IndexSpec, {key, Key, name, gen_index_name (Key), unique, false, dropDups, false});
-	{_} -> {key, IndexSpec, name, gen_index_name (IndexSpec), unique, false, dropDups, false}; % 'key' happens to be a user field
-	{} -> {key, IndexSpec, name, gen_index_name (IndexSpec), unique, false, dropDups, false} end.
+fillout_indexspec (IndexSpec) -> case bson:lookup (<<"key">>, IndexSpec) of
+	{Key} when is_tuple (Key) -> bson:merge (IndexSpec, {
+    <<"key">>, Key, 
+    <<"name">>, gen_index_name (Key), 
+    <<"unique">>, false, 
+    <<"dropDups">>, false});
+	{_} -> {
+    <<"key">>, IndexSpec, 
+    <<"name">>, gen_index_name (IndexSpec), 
+    <<"unique">>, false, 
+    <<"dropDups">>, false}; % 'key' happens to be a user field
+	{} -> {
+    <<"key">>, IndexSpec, 
+    <<"name">>, gen_index_name (IndexSpec), 
+    <<"unique">>, false, 
+    <<"dropDups">>, false} end.
 
 -spec gen_index_name (key_order()) -> bson:utf8().
 gen_index_name (KeyOrder) ->
@@ -460,5 +472,5 @@ copy_database (FromDb, FromHost, ToDb) ->
 -spec copy_database (db(), host(), db(), username(), password()) -> bson:document(). % Action
 % Copy database from given host, authenticating with given username and password, to the server I am connected to. Must be connected to 'admin' database.
 copy_database (FromDb, FromHost, ToDb, Username, Password) ->
-	Nonce = bson:at (nonce, command ({copydbgetnonce, 1, fromhost, mongo_connect:show_host (FromHost)})),
+	Nonce = bson:at (<<"nonce">>, command ({copydbgetnonce, 1, fromhost, mongo_connect:show_host (FromHost)})),
 	command ({copydb, 1, fromhost, mongo_connect:show_host (FromHost), fromdb, atom_to_binary (FromDb, utf8), todb, atom_to_binary (ToDb, utf8), username, Username, nonce, Nonce, key, pw_key (Nonce, Username, Password)}).

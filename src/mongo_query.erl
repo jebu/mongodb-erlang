@@ -45,7 +45,7 @@ write (DbConn, Write) ->
 command (DbConn, Command, SlaveOk) ->
 	Query = #'query' {collection = '$cmd', selector = Command, slaveok = SlaveOk},
 	{Doc} = find_one (DbConn, Query),
-	Ok = bson:at (ok, Doc),
+	Ok = bson:at (<<"ok">>, Doc),
 	if Ok == true orelse Ok == 1 -> Doc; true -> erlang:error ({bad_command, Doc}) end.  % bad_command parsed by mongo:auth
 
 -type 'query'() :: #'query'{}.
@@ -73,7 +73,7 @@ query_reply (#reply {
 	cursorid = Cid, startingfrom = _, documents = Docs }) ->
 		case QueryError of
 			false -> {Cid, Docs};
-			true -> case bson:at (code, hd (Docs)) of
+			true -> case bson:at (<<"code">>, hd (Docs)) of
 				13435 -> throw (not_master);
 				10057 -> throw (unauthorized);
 				_ -> erlang:error ({bad_query, hd (Docs)}) end end.

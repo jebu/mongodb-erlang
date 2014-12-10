@@ -453,8 +453,8 @@ fillout_indexspec (IndexSpec) -> case bson:lookup (<<"key">>, IndexSpec) of
 -spec gen_index_name (key_order()) -> bson:utf8().
 gen_index_name (KeyOrder) ->
 	AsName = fun (Label, Order, Name) -> <<
-		Name /binary, $_,
-		(atom_to_binary (Label, utf8)) /binary, $_,
+		Name/binary, $_,
+		(mongo_protocol:binarize(Label))/binary, $_,
 		(if
 			is_integer (Order) -> bson:utf8 (integer_to_list (Order));
 			is_atom (Order) -> atom_to_binary (Order, utf8);

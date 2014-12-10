@@ -6,7 +6,7 @@
 -export_type ([message/0]).
 -export_type ([requestid/0]).
 
--export ([bit/1, bool/1, dbcoll/2, put_message/3, get_reply/1]).
+-export ([bit/1, bool/1, dbcoll/2, put_message/3, get_reply/1, binarize/1]).
 
 -include ("mongo_protocol.hrl").
 -include_lib ("bson/include/bson_binary.hrl").

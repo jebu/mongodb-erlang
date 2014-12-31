@@ -345,7 +345,7 @@ count (Coll, Selector) -> count (Coll, Selector, 0).
 -spec count (collection(), selector(), integer()) -> integer(). % Action
 %@doc Count selected documents up to given max number; 0 means no max. Ie. stops counting when max is reached to save processing time.
 count (Coll, Selector, Limit) ->
-	CollStr = atom_to_binary (Coll, utf8),
+	CollStr = mongo_protocol:binarize(Coll),
 	Command = if
 		Limit =< 0 -> {count, CollStr, 'query', Selector};
 		true -> {count, CollStr, 'query', Selector, limit, Limit} end,
@@ -377,10 +377,10 @@ auth (Username, Password) ->
 		catch error:{bad_command, _} -> false end.
 
 -spec pw_key (nonce(), username(), password()) -> bson:utf8().
-pw_key (Nonce, Username, Password) -> bson:utf8 (binary_to_hexstr (crypto:md5 ([Nonce, Username, pw_hash (Username, Password)]))).
+pw_key (Nonce, Username, Password) -> bson:utf8 (binary_to_hexstr (crypto:hash (md5, [Nonce, Username, pw_hash (Username, Password)]))).
 
 -spec pw_hash (username(), password()) -> bson:utf8().
-pw_hash (Username, Password) -> bson:utf8 (binary_to_hexstr (crypto:md5 ([Username, <<":mongo:">>, Password]))).
+pw_hash (Username, Password) -> bson:utf8 (binary_to_hexstr (crypto:hash (md5, [Username, <<":mongo:">>, Password]))).
 
 -spec binary_to_hexstr (binary()) -> string().
 binary_to_hexstr (Bin) ->
@@ -467,10 +467,10 @@ gen_index_name (KeyOrder) ->
 -spec copy_database (db(), host(), db()) -> bson:document(). % Action
 % Copy database from given host to the server I am connected to. Must be connected to 'admin' database.
 copy_database (FromDb, FromHost, ToDb) ->
-	command ({copydb, 1, fromhost, mongo_connect:show_host (FromHost), fromdb, atom_to_binary (FromDb, utf8), todb, atom_to_binary (ToDb, utf8)}).
+	command ({copydb, 1, fromhost, mongo_connect:show_host (FromHost), fromdb, mongo_protocol:binarize(FromDb), todb, mongo_protocol:binarize(ToDb)}).
 
 -spec copy_database (db(), host(), db(), username(), password()) -> bson:document(). % Action
 % Copy database from given host, authenticating with given username and password, to the server I am connected to. Must be connected to 'admin' database.
 copy_database (FromDb, FromHost, ToDb, Username, Password) ->
 	Nonce = bson:at (<<"nonce">>, command ({copydbgetnonce, 1, fromhost, mongo_connect:show_host (FromHost)})),
-	command ({copydb, 1, fromhost, mongo_connect:show_host (FromHost), fromdb, atom_to_binary (FromDb, utf8), todb, atom_to_binary (ToDb, utf8), username, Username, nonce, Nonce, key, pw_key (Nonce, Username, Password)}).
+	command ({copydb, 1, fromhost, mongo_connect:show_host (FromHost), fromdb, mongo_protocol:binarize(FromDb), todb, mongo_protocol:binarize(ToDb), username, Username, nonce, Nonce, key, pw_key (Nonce, Username, Password)}).
